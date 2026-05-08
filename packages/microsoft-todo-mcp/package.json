@@ -1,0 +1,31 @@
+{
+  "name": "@dranem05/microsoft-todo-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Microsoft To Do — list, create, update, complete, delete tasks and checklist items",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "microsoft-todo-mcp": "dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "model-context-protocol", "microsoft-todo", "microsoft", "todo", "tasks", "ai"],
+  "author": "Patrick Menard",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dranem05/mcp-servers.git",
+    "directory": "packages/microsoft-todo-mcp"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

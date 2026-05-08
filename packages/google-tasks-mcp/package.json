@@ -1,0 +1,32 @@
+{
+  "name": "@dranem05/google-tasks-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Google Tasks — list, create, update, complete, delete, and reorder tasks",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "google-tasks-mcp": "dist/index.js"
+  },
+  "files": ["dist", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["mcp", "model-context-protocol", "google-tasks", "google", "tasks", "ai"],
+  "author": "Patrick Menard",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dranem05/mcp-servers.git",
+    "directory": "packages/google-tasks-mcp"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "googleapis": "^148.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}
