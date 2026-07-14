@@ -8,6 +8,7 @@ A collection of [Model Context Protocol](https://modelcontextprotocol.io) (MCP) 
 |---|---|---|
 | [@dranem05/google-tasks-mcp](packages/google-tasks-mcp) | Google Tasks via the Google Tasks API | `npx @dranem05/google-tasks-mcp` |
 | [@dranem05/microsoft-todo-mcp](packages/microsoft-todo-mcp) | Microsoft To Do via the Microsoft Graph API | `npx @dranem05/microsoft-todo-mcp` |
+| [@dranem05/youtube-mcp](packages/youtube-mcp) | YouTube channel analytics via the YouTube Data + Analytics APIs | build from source (see package README) |
 
 ## Development
 
