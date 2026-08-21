@@ -1,9 +1,9 @@
 # @dranem05/youtube-mcp
 
-MCP server for YouTube channel analytics. Read-only: channel stats, raw
+MCP server for YouTube channels: analytics (channel stats, raw
 [YouTube Analytics API](https://developers.google.com/youtube/analytics)
-queries, and weekly (Mon–Sun) metrics rollups suited to marketing and
-growth trackers.
+queries, weekly Mon–Sun rollups) plus a small set of write tools for
+comments and video descriptions.
 
 ## Tools
 
@@ -12,6 +12,39 @@ growth trackers.
 | `youtube_channel_stats` | Lifetime snapshot for the authorized channel: subscribers, total views, video count. Also the quickest "which channel am I authorized as?" check. |
 | `youtube_analytics_query` | Raw Analytics API passthrough — any metrics/dimensions/filters/sort over a date range (e.g. `views,estimatedMinutesWatched,subscribersGained` by `day` or `video`). |
 | `youtube_weekly_metrics` | Monday-to-Sunday weekly buckets of views, watch minutes, and subscribers gained/lost/net. Emits every week in range (zero weeks included); incomplete trailing weeks are flagged `partial`. |
+| `youtube_comment_post` | Post a new top-level comment on a video, as the authorized channel. Write tool — see "Write tools" below. |
+| `youtube_comment_reply` | Reply to an existing top-level comment. Write tool. |
+| `youtube_comment_update` | Edit a comment the authorized channel authored. Write tool. |
+| `youtube_video_update_description` | Replace a video's description without disturbing its other metadata. Write tool. |
+
+### Write tools
+
+These four call the Data API's `commentThreads`/`comments`/`videos` write
+endpoints and need the additional OAuth scope described under
+"Authentication" below.
+
+- **No pin tool, on purpose.** The Data API has no endpoint to pin a
+  comment (`comments.setModerationStatus` is comment moderation, a
+  different thing — it does not pin). Pinning is a YouTube Studio-only
+  action; if you need a comment pinned, post it with `youtube_comment_post`
+  and pin it by hand afterward.
+- **`youtube_video_update_description` is a strict read-modify-write.**
+  `videos.update` replaces the *entire* `snippet` part of a video resource,
+  not just the fields you send — sending only a description would silently
+  wipe the title, categoryId, tags, and defaultLanguage off a live video.
+  This tool fetches the current snippet first, changes only the
+  description, and sends the whole thing back. It also rejects videos the
+  authorized channel doesn't own and descriptions over 5000 characters
+  before calling the API, rather than surfacing an opaque 403 or a
+  server-side truncation.
+- **Localized descriptions are a separate, unaffected thing.** A video's
+  `localizations` (per-language title/description overrides) is a sibling
+  field of `snippet`, not nested inside it — an update scoped to
+  `part=snippet` cannot touch it either way. `youtube_video_update_description`
+  reports which language codes have localized overrides in its response, so
+  you notice if one is now stale relative to the description you just
+  changed, but it does not update them; do that with a separate
+  `videos.update` call using `part=localizations` if needed.
 
 ## Setup
 
@@ -31,6 +64,23 @@ https://www.googleapis.com/auth/youtube.readonly
 https://www.googleapis.com/auth/yt-analytics.readonly
 ```
 
+Add this scope too if you want the **write tools** (`youtube_comment_post`,
+`youtube_comment_reply`, `youtube_comment_update`,
+`youtube_video_update_description`) to work:
+
+```
+https://www.googleapis.com/auth/youtube.force-ssl
+```
+
+This is deliberately **opt-in, not requested by default.** Asking for a
+write scope when the caller only wants analytics is a real cost — a wider
+consent screen, and a token that can mutate a channel's public content
+sitting around for a use case that never needed to. Request it only when
+you actually intend to use the write tools. (Note for `videos.update`
+specifically: it also accepts the broader `youtube` or `youtubepartner`
+scopes if you already hold one of those for other reasons — `force-ssl`
+alone does not need to be requested twice.)
+
 **Important:** at the Google account chooser, pick the **channel identity** you
 want analytics for. Brand-account channels appear as their own entry, separate
 from the user account that manages them — analytics are scoped to whichever
@@ -46,9 +96,15 @@ machine hold tokens for several channels.
 {
   "client_id": "your-client-id",
   "client_secret": "your-client-secret",
-  "refresh_token": "your-refresh-token"
+  "refresh_token": "your-refresh-token",
+  "scopes": ["https://www.googleapis.com/auth/youtube.readonly", "https://www.googleapis.com/auth/yt-analytics.readonly"]
 }
 ```
+
+The `scopes` field is optional but recommended: the write tools read it to
+fail fast with an actionable message when a token lacks the scope a write
+needs, instead of surfacing the API's opaque 403. Record whatever scopes
+you actually requested when minting the token.
 
 ```bash
 mkdir -p ~/.config/youtube-mcp && chmod 700 ~/.config/youtube-mcp
@@ -100,6 +156,12 @@ the first tool call reports exactly what's missing.
   days, so values for the last day or two may drift slightly between queries.
 - `youtube_weekly_metrics` is designed for "complete weeks only" ingestion:
   ignore rows flagged `partial` if you're appending to a durable dataset.
+- `youtube_video_update_description`'s merge logic (the part that can
+  silently destroy metadata if it's wrong) has a fixture test:
+  `npm run build && npm test`. The fixture is a real `videos.list` response
+  with identifying values replaced by placeholders; the test asserts that
+  title, categoryId, tags, and defaultLanguage all survive a description
+  change untouched — not just that the description itself changed.
 
 ## License
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import { program } from "commander";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { loadAuth, YouTubeAuth } from "./auth.js";
+import { loadAuth, LoadedCredentials } from "./auth.js";
 import { createServer } from "./server.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 program
   .name("youtube-mcp")
-  .description("YouTube MCP server (channel stats + Analytics API)")
+  .description("YouTube MCP server (channel stats + Analytics API + comment/description writes)")
   .requiredOption("--slug <slug>", "Channel token slug (names the credentials file: youtube-<slug>-credentials.json)")
   .option(
     "--token-dir <dir>",
@@ -25,12 +25,15 @@ process.on("SIGTERM", shutdown);
 
 // Auth loads lazily on first tool call, so the server registers cleanly even
 // before the credentials file has been created.
-let auth: YouTubeAuth | null = null;
-const getAuth = (): YouTubeAuth => {
-  if (!auth) auth = loadAuth(opts.slug, opts.tokenDir);
-  return auth;
+let loaded: LoadedCredentials | null = null;
+const getLoaded = (): LoadedCredentials => {
+  if (!loaded) loaded = loadAuth(opts.slug, opts.tokenDir);
+  return loaded;
 };
 
-const server = createServer({ getAuth });
+const server = createServer({
+  getAuth: () => getLoaded().client,
+  getScopes: () => getLoaded().scopes,
+});
 const transport = new StdioServerTransport();
 await server.connect(transport);

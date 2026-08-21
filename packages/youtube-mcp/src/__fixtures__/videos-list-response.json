@@ -1,0 +1,56 @@
+{
+  "kind": "youtube#videoListResponse",
+  "etag": "PLACEHOLDER_ETAG",
+  "items": [
+    {
+      "kind": "youtube#video",
+      "etag": "PLACEHOLDER_ITEM_ETAG",
+      "id": "PLACEHOLDER_VIDEO_ID",
+      "snippet": {
+        "publishedAt": "2026-01-01T00:00:00Z",
+        "channelId": "PLACEHOLDER_CHANNEL_ID",
+        "title": "Placeholder Video Title",
+        "description": "Placeholder description, line one.\n\nPlaceholder description, line two, with a placeholder link:\n→ https://example.com/placeholder-link\n",
+        "thumbnails": {
+          "default": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/default.jpg", "width": 120, "height": 90 },
+          "medium": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/mqdefault.jpg", "width": 320, "height": 180 },
+          "high": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/hqdefault.jpg", "width": 480, "height": 360 },
+          "standard": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/sddefault.jpg", "width": 640, "height": 480 },
+          "maxres": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/maxresdefault.jpg", "width": 1280, "height": 720 }
+        },
+        "channelTitle": "Placeholder Channel",
+        "categoryId": "22",
+        "liveBroadcastContent": "none",
+        "defaultLanguage": "en",
+        "localized": {
+          "title": "Placeholder Video Title",
+          "description": "Placeholder description, line one.\n\nPlaceholder description, line two, with a placeholder link:\n→ https://example.com/placeholder-link\n"
+        },
+        "defaultAudioLanguage": "en"
+      },
+      "status": {
+        "uploadStatus": "processed",
+        "privacyStatus": "public",
+        "license": "youtube",
+        "embeddable": true,
+        "publicStatsViewable": true,
+        "madeForKids": false,
+        "selfDeclaredMadeForKids": false
+      },
+      "localizations": {
+        "en": {
+          "title": "Placeholder Video Title",
+          "description": "Placeholder description, line one.\n\nPlaceholder description, line two, with a placeholder link:\n→ https://example.com/placeholder-link\n"
+        },
+        "es": {
+          "title": "Título de marcador",
+          "description": "Descripción de marcador de posición."
+        }
+      }
+    }
+  ],
+  "pageInfo": {
+    "totalResults": 1,
+    "resultsPerPage": 1
+  }
+}
