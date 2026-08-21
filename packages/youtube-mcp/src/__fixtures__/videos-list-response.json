@@ -18,6 +18,11 @@
           "standard": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/sddefault.jpg", "width": 640, "height": 480 },
           "maxres": { "url": "https://i.ytimg.com/vi/PLACEHOLDER_VIDEO_ID/maxresdefault.jpg", "width": 1280, "height": 720 }
         },
+        "tags": [
+          "placeholder tag one",
+          "placeholder tag two",
+          "placeholder multi word tag"
+        ],
         "channelTitle": "Placeholder Channel",
         "categoryId": "22",
         "liveBroadcastContent": "none",

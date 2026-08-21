@@ -46,9 +46,15 @@ test("buildUpdatedSnippet does not mutate its input", () => {
 });
 
 test("buildUpdatedSnippet works when the original snippet has no tags array (real videos can lack one)", () => {
-  const noTagsSnippet = { ...originalSnippet, tags: undefined };
+  // Delete the key rather than setting it to undefined: `{...snippet, tags:
+  // undefined}` still HAS a `tags` property, so asserting it comes back
+  // undefined would pass even on a merge that dropped every field. The
+  // absent-key case is the one a real untagged video produces.
+  const noTagsSnippet = { ...originalSnippet };
+  delete noTagsSnippet.tags;
+
   const updated = buildUpdatedSnippet(noTagsSnippet, "new description");
-  assert.equal(updated.tags, undefined);
+  assert.ok(!("tags" in updated), "an absent tags key must stay absent, not become null");
   assert.equal(updated.title, originalSnippet.title);
 });
 
