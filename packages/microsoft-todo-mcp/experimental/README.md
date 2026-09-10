@@ -32,6 +32,22 @@ the extra tools only when the local store is present, so the package stays a
 clean, platform-neutral Graph client on Windows, Linux, and Macs without the
 desktop app installed.
 
+### Deploying it
+
+This file is the canonical source. Do **not** point a caller at this path — it
+lives in a git working tree, so a branch checkout can move or remove it out from
+under a running job. Deploy a runtime copy instead, the same way the rest of the
+OpenBrain runtime works (repo holds the tracked copy, `~/.config/openbrain/`
+holds the live one):
+
+```
+install -m 755 packages/microsoft-todo-mcp/experimental/todo-local \
+        ~/.config/openbrain/lib/todo-local
+```
+
+Re-run that after any edit here — the runtime copy does not update itself, and a
+stale copy is the obvious failure mode of this arrangement.
+
 ### Usage
 
 ```
