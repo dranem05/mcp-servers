@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""todo-local — read assignment and attribution out of the Microsoft To Do Mac app.
+
+Why this exists: Microsoft Graph's todoTask resource exposes no assignee, no
+creator and no completer. The Mac app's own local store does. This reads that
+store, read-only, so Kaya can answer "who is this on?" and "who actually closed
+it?" — questions the API cannot answer at all.
+
+Verified 2026-09-09: a task assigned on iOS appeared in this store ~2 minutes
+later, and completed_by correctly identified the family member who tapped it.
+
+Read-only by construction: the live DB is snapshotted to a temp dir and opened
+through a file: URI with mode=ro. The app owns that file and reconciles it
+against the server; never write to it.
+
+Schema is undocumented and could change in a To Do update (2.177 as of
+2026-07-06, shipping bugfix-only releases). `schema-check` runs on every
+command and exits 3 with a named missing column rather than returning
+plausible-but-wrong output.
+
+Usage:
+  todo-local assigned  [--list NAME] [--json]
+  todo-local completed --since YYYY-MM-DD [--list NAME] [--json]
+  todo-local tags      [--list NAME] [--json]
+  todo-local people    [--json]
+  todo-local schema-check
+
+Timestamp note: tasks.completed_datetime is a DATE stamped at local midnight,
+not a real time — use last_modified for when the tap actually happened.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import sqlite3
+import sys
+import tempfile
+
+DB = os.path.expanduser(
+    "~/Library/Group Containers/UBF8T346G9.com.microsoft.to-do-mac"
+    "/AccountData/userdatabase.db"
+)
+
+# table -> columns this script actually reads. Guard fails loudly on any drift.
+REQUIRED = {
+    "tasks": ["local_id", "subject", "status", "deleted", "task_folder_local_id",
+              "created_by", "completed_by", "completed_datetime",
+              "created_datetime", "last_modified_date_time", "due_date"],
+    "assignments": ["task_local_id", "assignee_id", "assignee_display_name",
+                    "assigner_id", "assigned_datetime", "deleted"],
+    "members": ["online_id", "display_name", "task_folder_local_id", "owner"],
+    "task_folders": ["local_id", "name", "deleted", "is_folder_shared"],
+}
+
+TAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9][\w-]*)")
+
+
+def die(msg, code=1):
+    print(f"todo-local: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def snapshot(tmpdir):
+    """Copy the live store (plus WAL/SHM) so we never touch the app's file."""
+    if not os.path.exists(DB):
+        die(f"To Do store not found at {DB}\n"
+            "Is Microsoft To Do installed and signed in on this Mac?", 4)
+    dest = os.path.join(tmpdir, "todo.db")
+    for suffix in ("", "-wal", "-shm"):
+        src = DB + suffix
+        if os.path.exists(src):
+            shutil.copy2(src, dest + suffix)
+    return dest
+
+
+def connect(tmpdir):
+    path = snapshot(tmpdir)
+    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def check_schema(con, quiet=True):
+    problems = []
+    have_tables = {r["name"] for r in
+                   con.execute("select name from sqlite_master where type='table'")}
+    for table, cols in REQUIRED.items():
+        if table not in have_tables:
+            problems.append(f"missing table: {table}")
+            continue
+        present = {r["name"] for r in con.execute(f"pragma table_info('{table}')")}
+        for col in cols:
+            if col not in present:
+                problems.append(f"missing column: {table}.{col}")
+    if problems:
+        die("local To Do schema has drifted — refusing to report possibly wrong "
+            "results.\n  " + "\n  ".join(problems) +
+            "\nA To Do update likely reshaped the store; re-inspect before trusting "
+            "any output.", 3)
+    if not quiet:
+        print("schema OK — all expected tables and columns present")
+
+
+def people_map(con):
+    """online_id -> display name, from list membership and assignment history.
+
+    `members.display_name` is sometimes the raw email address while
+    `assignments.assignee_display_name` carries the person's real name for the
+    same id. Prefer a human name over an address, whichever table it comes from.
+    """
+    def better(existing, candidate):
+        if not candidate:
+            return existing
+        if not existing:
+            return candidate
+        # a name without an "@" beats an email-shaped string
+        if "@" in existing and "@" not in candidate:
+            return candidate
+        return existing
+
+    out = {}
+    for r in con.execute(
+        "select online_id, display_name from members where deleted=0"
+    ):
+        out[r["online_id"]] = better(out.get(r["online_id"]), r["display_name"])
+    for r in con.execute(
+        "select assignee_id, assignee_display_name from assignments "
+        "where assignee_display_name is not null"
+    ):
+        out[r["assignee_id"]] = better(out.get(r["assignee_id"]),
+                                       r["assignee_display_name"])
+    return out
+
+
+def who(pmap, ident):
+    if not ident:
+        return None
+    return pmap.get(ident, f"<unknown:{ident}>")
+
+
+def list_filter(args):
+    if not args.list:
+        return "", []
+    return " and lower(f.name) = ? ", [args.list.lower()]
+
+
+def cmd_assigned(con, args):
+    pmap = people_map(con)
+    where, params = list_filter(args)
+    rows = con.execute(
+        "select t.subject, t.status, t.due_date, t.local_id, "
+        "       f.name as list_name, f.is_folder_shared, "
+        "       a.assignee_id, a.assignee_display_name, a.assigner_id, "
+        "       a.assigned_datetime "
+        "from assignments a "
+        "join tasks t on t.local_id = a.task_local_id "
+        "left join task_folders f on f.local_id = t.task_folder_local_id "
+        "where a.deleted=0 and t.deleted=0 and t.status != 'Completed' "
+        + where +
+        "order by a.assigned_datetime desc", params
+    ).fetchall()
+
+    items = [{
+        "task": r["subject"],
+        "list": r["list_name"],
+        "shared_list": bool(r["is_folder_shared"]),
+        "assignee": r["assignee_display_name"] or who(pmap, r["assignee_id"]),
+        "assigned_by": who(pmap, r["assigner_id"]),
+        "assigned_at": r["assigned_datetime"],
+        "due": r["due_date"],
+    } for r in rows]
+
+    if args.json:
+        print(json.dumps(items, indent=1))
+        return
+    if not items:
+        print("no open assigned tasks")
+        return
+    by_person = {}
+    for it in items:
+        by_person.setdefault(it["assignee"] or "(unassigned)", []).append(it)
+    for person, tasks in sorted(by_person.items()):
+        print(f"\n{person} — {len(tasks)}")
+        for t in tasks:
+            due = f"  due {t['due'][:10]}" if t["due"] else ""
+            print(f"  · {t['task']}  [{t['list']}]{due}")
+
+
+def cmd_completed(con, args):
+    pmap = people_map(con)
+    where, params = list_filter(args)
+    rows = con.execute(
+        "select t.subject, t.completed_by, t.completed_datetime, "
+        "       t.last_modified_date_time, f.name as list_name "
+        "from tasks t "
+        "left join task_folders f on f.local_id = t.task_folder_local_id "
+        "where t.deleted=0 and t.status='Completed' "
+        "  and t.last_modified_date_time >= ? " + where +
+        "order by t.last_modified_date_time desc",
+        [args.since] + params
+    ).fetchall()
+
+    items = [{
+        "task": r["subject"],
+        "list": r["list_name"],
+        "completed_by": who(pmap, r["completed_by"]) or "(unrecorded)",
+        # date-only, stamped at local midnight — not a real time
+        "completed_date": (r["completed_datetime"] or "")[:10] or None,
+        "last_modified": r["last_modified_date_time"],
+    } for r in rows]
+
+    if args.json:
+        print(json.dumps(items, indent=1))
+        return
+    if not items:
+        print(f"nothing completed since {args.since}")
+        return
+    for it in items:
+        print(f"· {it['task']}  [{it['list']}]")
+        print(f"    by {it['completed_by']}  on {it['completed_date']}"
+              f"  (modified {it['last_modified']})")
+
+
+def cmd_tags(con, args):
+    """Surface #hashtag ownership — the convention that actually syncs."""
+    where, params = list_filter(args)
+    rows = con.execute(
+        "select t.subject, t.status, t.due_date, f.name as list_name "
+        "from tasks t "
+        "left join task_folders f on f.local_id = t.task_folder_local_id "
+        "where t.deleted=0 and t.status != 'Completed' " + where +
+        "order by t.due_date is null, t.due_date", params
+    ).fetchall()
+
+    tagged = {}
+    for r in rows:
+        for tag in TAG_RE.findall(r["subject"] or ""):
+            tagged.setdefault(tag.lower(), []).append({
+                "task": r["subject"],
+                "list": r["list_name"],
+                "due": (r["due_date"] or "")[:10] or None,
+            })
+
+    if args.json:
+        print(json.dumps(tagged, indent=1))
+        return
+    if not tagged:
+        print("no open tasks carry a #tag")
+        return
+    for tag, items in sorted(tagged.items()):
+        print(f"\n#{tag} — {len(items)}")
+        for it in items:
+            due = f"  due {it['due']}" if it["due"] else ""
+            print(f"  · {it['task']}  [{it['list']}]{due}")
+
+
+def cmd_people(con, args):
+    pmap = people_map(con)
+    owners = {r["online_id"] for r in
+              con.execute("select online_id from members where owner=1")}
+    items = [{"id": k, "name": v, "is_account_owner": k in owners}
+             for k, v in sorted(pmap.items(), key=lambda kv: kv[1])]
+    if args.json:
+        print(json.dumps(items, indent=1))
+        return
+    for it in items:
+        flag = "  (this account)" if it["is_account_owner"] else ""
+        print(f"{it['name']}  {it['id']}{flag}")
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="todo-local",
+        description="Read assignment/attribution from the local Microsoft To Do store.")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def common(p):
+        p.add_argument("--list", help="restrict to one list, by name")
+        p.add_argument("--json", action="store_true", help="machine-readable output")
+
+    common(sub.add_parser("assigned", help="open tasks that have an assignee"))
+    c = sub.add_parser("completed", help="completed tasks and who closed them")
+    c.add_argument("--since", required=True, metavar="YYYY-MM-DD",
+                   help="only tasks modified on or after this date")
+    common(c)
+    common(sub.add_parser("tags", help="open tasks grouped by #hashtag"))
+    common(sub.add_parser("people", help="known people and their ids"))
+    sub.add_parser("schema-check", help="verify the local store looks as expected")
+
+    args = ap.parse_args()
+
+    with tempfile.TemporaryDirectory(prefix="todo-local-") as tmp:
+        con = connect(tmp)
+        try:
+            check_schema(con, quiet=(args.cmd != "schema-check"))
+            if args.cmd == "schema-check":
+                return
+            {"assigned": cmd_assigned, "completed": cmd_completed,
+             "tags": cmd_tags, "people": cmd_people}[args.cmd](con, args)
+        finally:
+            con.close()
+
+
+if __name__ == "__main__":
+    main()
