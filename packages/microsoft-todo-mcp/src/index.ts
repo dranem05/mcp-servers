@@ -175,19 +175,22 @@ interface TodoTask {
   checklistItems?: ChecklistItem[];
 }
 
+
 // --- MCP server -----------------------------------------------------------
 
 const server = new McpServer({
   name: "microsoft-todo",
-  version: "0.1.0",
+  version: "0.1.1",
 });
 
 // --- Tools ----------------------------------------------------------------
 
-server.tool(
+server.registerTool(
   "listTaskLists",
-  "List all Microsoft To Do task lists for this account",
-  {},
+  {
+    description: "List all Microsoft To Do task lists for this account",
+    inputSchema: z.object({}).strict(),
+  },
   async () => {
     const lists = await graphGetAll<TodoTaskList>("/me/todo/lists");
     const text = lists
@@ -197,25 +200,27 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "listTasks",
-  "List tasks in a Microsoft To Do list. Use sort to control ordering.",
   {
-    taskListId: z
-      .string()
-      .describe("Task list ID (use listTaskLists to find IDs)"),
-    showCompleted: z
-      .boolean()
-      .default(false)
-      .describe("Include completed tasks"),
-    sort: z
-      .enum(["default", "newest", "oldest", "updated", "importance"])
-      .default("default")
-      .describe("Sort order: default (API order), newest/oldest (by creation date), updated (last modified), importance"),
-    limit: z
-      .number()
-      .optional()
-      .describe("Max number of tasks to return (default: all)"),
+    description: "List tasks in a Microsoft To Do list. Use sort to control ordering.",
+    inputSchema: z.object({
+      taskListId: z
+        .string()
+        .describe("Task list ID (use listTaskLists to find IDs)"),
+      showCompleted: z
+        .boolean()
+        .default(false)
+        .describe("Include completed tasks"),
+      sort: z
+        .enum(["default", "newest", "oldest", "updated", "importance"])
+        .default("default")
+        .describe("Sort order: default (API order), newest/oldest (by creation date), updated (last modified), importance"),
+      limit: z
+        .number()
+        .optional()
+        .describe("Max number of tasks to return (default: all)"),
+    }).strict(),
   },
   async ({ taskListId, showCompleted, sort, limit }) => {
     let filter = "";
@@ -295,12 +300,14 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "getTask",
-  "Get details of a specific task including checklist items",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Task ID"),
+    description: "Get details of a specific task including checklist items",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Task ID"),
+    }).strict(),
   },
   async ({ taskListId, taskId }) => {
     const t = (await graphGet(
@@ -333,28 +340,31 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "createTask",
-  "Create a new task in a Microsoft To Do list",
   {
-    taskListId: z.string().describe("Task list ID"),
-    title: z.string().describe("Task title"),
-    body: z.string().optional().describe("Task body/notes"),
-    due: z
-      .string()
-      .optional()
-      .describe("Due date in YYYY-MM-DD format"),
-    importance: z
-      .enum(["low", "normal", "high"])
-      .default("normal")
-      .describe("Task importance"),
+    description: "Create a new task in a Microsoft To Do list",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      title: z.string().describe("Task title"),
+      body: z.string().optional().describe("Task body/notes"),
+      due: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
+        .optional()
+        .describe("Due date in YYYY-MM-DD format"),
+      importance: z
+        .enum(["low", "normal", "high"])
+        .default("normal")
+        .describe("Task importance"),
+    }).strict(),
   },
   async ({ taskListId, title, body, due, importance }) => {
     const requestBody: Record<string, any> = { title, importance };
-    if (body) {
+    if (body !== undefined) {
       requestBody.body = { content: body, contentType: "text" };
     }
-    if (due) {
+    if (due !== undefined) {
       requestBody.dueDateTime = {
         dateTime: `${due}T00:00:00.0000000`,
         timeZone: "UTC",
@@ -376,22 +386,25 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "updateTask",
-  "Update an existing task (title, body, due date, importance)",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Task ID to update"),
-    title: z.string().optional().describe("New title"),
-    body: z.string().optional().describe("New body/notes"),
-    due: z
-      .string()
-      .optional()
-      .describe("New due date in YYYY-MM-DD format"),
-    importance: z
-      .enum(["low", "normal", "high"])
-      .optional()
-      .describe("New importance"),
+    description: "Update an existing task (title, body, due date, importance)",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Task ID to update"),
+      title: z.string().optional().describe("New title"),
+      body: z.string().optional().describe("New body/notes"),
+      due: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
+        .optional()
+        .describe("New due date in YYYY-MM-DD format"),
+      importance: z
+        .enum(["low", "normal", "high"])
+        .optional()
+        .describe("New importance"),
+    }).strict(),
   },
   async ({ taskListId, taskId, title, body, due, importance }) => {
     const requestBody: Record<string, any> = {};
@@ -420,12 +433,14 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "completeTask",
-  "Mark a task as completed",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Task ID to complete"),
+    description: "Mark a task as completed",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Task ID to complete"),
+    }).strict(),
   },
   async ({ taskListId, taskId }) => {
     const res = (await graphPatch(
@@ -443,12 +458,14 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "deleteTask",
-  "Delete a task from a Microsoft To Do list",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Task ID to delete"),
+    description: "Delete a task from a Microsoft To Do list",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Task ID to delete"),
+    }).strict(),
   },
   async ({ taskListId, taskId }) => {
     await graphDelete(`/me/todo/lists/${taskListId}/tasks/${taskId}`);
@@ -458,13 +475,15 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "addChecklistItem",
-  "Add a checklist item (subtask) to an existing task",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Parent task ID"),
-    displayName: z.string().describe("Checklist item text"),
+    description: "Add a checklist item (subtask) to an existing task",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Parent task ID"),
+      displayName: z.string().describe("Checklist item text"),
+    }).strict(),
   },
   async ({ taskListId, taskId, displayName }) => {
     const res = (await graphPost(
@@ -482,15 +501,17 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "updateChecklistItem",
-  "Update a checklist item (mark checked/unchecked or rename)",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Parent task ID"),
-    checklistItemId: z.string().describe("Checklist item ID"),
-    displayName: z.string().optional().describe("New display name"),
-    isChecked: z.boolean().optional().describe("Checked state"),
+    description: "Update a checklist item (mark checked/unchecked or rename)",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Parent task ID"),
+      checklistItemId: z.string().describe("Checklist item ID"),
+      displayName: z.string().optional().describe("New display name"),
+      isChecked: z.boolean().optional().describe("Checked state"),
+    }).strict(),
   },
   async ({ taskListId, taskId, checklistItemId, displayName, isChecked }) => {
     const body: Record<string, any> = {};
@@ -512,13 +533,15 @@ server.tool(
   }
 );
 
-server.tool(
+server.registerTool(
   "deleteChecklistItem",
-  "Delete a checklist item from a task",
   {
-    taskListId: z.string().describe("Task list ID"),
-    taskId: z.string().describe("Parent task ID"),
-    checklistItemId: z.string().describe("Checklist item ID to delete"),
+    description: "Delete a checklist item from a task",
+    inputSchema: z.object({
+      taskListId: z.string().describe("Task list ID"),
+      taskId: z.string().describe("Parent task ID"),
+      checklistItemId: z.string().describe("Checklist item ID to delete"),
+    }).strict(),
   },
   async ({ taskListId, taskId, checklistItemId }) => {
     await graphDelete(
